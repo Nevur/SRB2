@@ -1,7 +1,7 @@
 // SONIC ROBO BLAST 2
 //-----------------------------------------------------------------------------
 // Copyright (C) 1998-2000 by DooM Legacy Team.
-// Copyright (C) 1999-2016 by Sonic Team Junior.
+// Copyright (C) 1999-2018 by Sonic Team Junior.
 //
 // This program is free software distributed under the
 // terms of the GNU General Public License, version 2.
@@ -1796,6 +1796,10 @@ static void Got_Mapcmd(UINT8 **cp, INT32 playernum)
 			mapname, resetplayer, lastgametype, gametype, chmappending));
 		CONS_Printf(M_GetText("Speeding off to level...\n"));
 	}
+
+	CON_ToggleOff();
+	CON_ClearHUD();
+
 	if (demoplayback && !timingdemo)
 		precache = false;
 
@@ -1812,7 +1816,6 @@ static void Got_Mapcmd(UINT8 **cp, INT32 playernum)
 	G_InitNew(ultimatemode, mapname, resetplayer, skipprecutscene);
 	if (demoplayback && !timingdemo)
 		precache = true;
-	CON_ToggleOff();
 	if (timingdemo)
 		G_DoneLevelLoad();
 
