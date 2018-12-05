@@ -1368,9 +1368,9 @@ static void P_LoadMapthings(UINT8 *data)
 			default:
 				break;
 		}
-	}
 
-	mt->scale = FRACUNIT;
+		mt->scale = FRACUNIT;
+	}
 }
 
 static void P_SpawnThings(void)
