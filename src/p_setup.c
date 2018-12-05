@@ -837,6 +837,9 @@ static void P_LoadSectors(UINT8 *data)
 		ss->floorspeed = 0;
 		ss->ceilspeed = 0;
 
+		ss->floor_scale = FRACUNIT;
+		ss->ceiling_scale = FRACUNIT;
+
 #ifdef HWRENDER // ----- for special tricks with HW renderer -----
 		ss->pseudoSector = false;
 		ss->virtualFloor = false;
@@ -885,9 +888,9 @@ static void P_LoadNodes(UINT8 *data)
 void ParseUDMFVertex(UINT32 i, char *param)
 {
 	if (fastcmp(param, "x"))
-		vertexes[i].x = atol(M_GetToken(NULL))<<FRACBITS;
+		vertexes[i].x = FLOAT_TO_FIXED(atof(M_GetToken(NULL)));
 	else if (fastcmp(param, "y"))
-		vertexes[i].y = atol(M_GetToken(NULL))<<FRACBITS;
+		vertexes[i].y = FLOAT_TO_FIXED(atof(M_GetToken(NULL)));
 }
 
 /** Auxiliary function for ParseUDMFStuff.
@@ -930,6 +933,10 @@ void ParseUDMFSector(UINT32 i, char *param)
 		sectors[i].verticalflip = true;
 //	else if (fastcmp(param, "heatwave") && fastcmp("true", M_GetToken(NULL)))
 //		sectors[i].udmfflags |= SFU_HEATWAVE;
+	else if (fastcmp(param, "xscalefloor"))
+		sectors[i].floor_scale = FLOAT_TO_FIXED(atof(M_GetToken(NULL)));
+	else if (fastcmp(param, "xscaleceiling"))
+		sectors[i].ceiling_scale = FLOAT_TO_FIXED(atof(M_GetToken(NULL)));
 
 	InitSector(&(sectors[i]));
 }
@@ -1081,8 +1088,10 @@ void ParseUDMFThing(UINT32 i, char *param)
 //		mapthings[i].roll = atol(M_GetToken(NULL));
 	else if (fastcmp(param, "type"))
 		mapthings[i].type = atol(M_GetToken(NULL));
-//	else if (fastcmp(param, "scale"))
-//		mapthings[i].scale = FLOAT_TO_FIXED(atof(M_GetToken(NULL)));
+	else if (fastcmp(param, "scale"))
+		mapthings[i].scale = FLOAT_TO_FIXED(atof(M_GetToken(NULL)));
+	else if (fastcmp(param, "scalex"))
+		mapthings[i].scale = FLOAT_TO_FIXED(atof(M_GetToken(NULL)));
 /*	else if (fastcmp(param, "spawntrigger"))
 		mapthings[i].spawntrigger = atol(M_GetToken(NULL));
 	else if (fastcmp(param, "seetrigger"))
@@ -1360,6 +1369,8 @@ static void P_LoadMapthings(UINT8 *data)
 				break;
 		}
 	}
+
+	mt->scale = FRACUNIT;
 }
 
 static void P_SpawnThings(void)
@@ -1769,8 +1780,6 @@ static void P_LoadSideDefs(void *data)
 
 		sd->textureoffset = SHORT(msd->textureoffset)<<FRACBITS;
 		sd->rowoffset = SHORT(msd->rowoffset)<<FRACBITS;
-		// Default binary.
-		sd->scalex_top = sd->scaley_top = sd->scalex_mid = sd->scaley_mid = sd->scalex_bot = sd->scaley_bot = 0;
 
 		{ /* cph 2006/09/30 - catch out-of-range sector numbers; use sector 0 instead */
 			UINT16 sector_num = SHORT(msd->sector);
@@ -1990,6 +1999,9 @@ static void P_LoadSideDefs(void *data)
 				}
 				break;
 		}
+
+		// Default binary.
+		sd->scalex_top = sd->scaley_top = sd->scalex_mid = sd->scaley_mid = sd->scalex_bot = sd->scaley_bot = FRACUNIT;
 	}
 }
 
@@ -2855,6 +2867,9 @@ void P_MapDefaults()
 		sc->verticalflip = false;
 //		sc->udmfflags = 0;
 
+
+		sc->floor_scale = FRACUNIT;
+		sc->ceiling_scale = FRACUNIT;
 	}
 
 	for (i = 0, mt = mapthings; i < nummapthings; i++, mt++)
@@ -2927,6 +2942,8 @@ typedef enum {
 	NT_ZGLN,
 	NT_XGL2,
 	NT_ZGL2,
+	NT_XGL3,
+	NT_ZGL3,
 	NT_UNSUPPORTED
 } nodetype_t;
 
@@ -3153,6 +3170,8 @@ boolean P_SetupLevel(boolean skipprecip)
 			virtnodes = vres_Find(virt, "ZNODES");
 			if (!memcmp(virtnodes->data, "XGLN", 4))
 				nodetype = NT_XGLN;
+			else if (!memcmp(virtnodes->data, "XGL3", 4))
+				nodetype = NT_XGL3;
 		}
 		else
 		{
@@ -3176,11 +3195,15 @@ boolean P_SetupLevel(boolean skipprecip)
 						virtnodes = virtssectors;
 						nodetype = NT_XGLN;
 					}
-
 					else if (!memcmp(virtssectors->data, "ZGLN", 4)) // Compressed variant.
 					{
 						virtnodes = virtssectors;
 						nodetype = NT_ZGLN;
+					}
+					else if (!memcmp(virtssectors->data, "XGL3", 4)) // Compressed variant.
+					{
+						virtnodes = virtssectors;
+						nodetype = NT_ZGL3;
 					}
 
 				}
@@ -3300,6 +3323,7 @@ boolean P_SetupLevel(boolean skipprecip)
 			break;
 		case NT_XNOD:
 		case NT_XGLN:
+		case NT_XGL3:
 		{
 			UINT32 i, j, k;
 			UINT8* data = virtnodes->data;
@@ -3365,6 +3389,31 @@ boolean P_SetupLevel(boolean skipprecip)
 						}
 						segs[k].side = READUINT8(data);
 					}
+					else if (nodetype == NT_XGL3)
+					{
+						UINT32 linenum;
+						UINT32 vert;
+						vert = READUINT32(data);
+						segs[k].v1 = &vertexes[vert];
+						if (j == 0)
+							segs[k + subsectors[i].numlines - 1].v2 = &vertexes[vert];
+						else
+							segs[k - 1].v2 = segs[k].v1;
+						data += 4;// partner; can be ignored by software renderer;
+						linenum = READUINT32(data);
+						if (linenum == 0xFFFFFFFF)
+						{
+							segs[k].glseg = true;
+							//segs[k].linedef = 0xFFFFFFFF;
+							segs[k].linedef = &lines[0]; /// \todo Not meant to do this.
+						}
+						else
+						{
+							segs[k].glseg = false;
+							segs[k].linedef = &lines[linenum];
+						}
+						segs[k].side = READUINT8(data);
+					}
 					else if (nodetype == NT_XNOD)
 					{
 						segs[k].v1		= &vertexes[READUINT32(data)];
@@ -3403,6 +3452,34 @@ boolean P_SetupLevel(boolean skipprecip)
 			// Nodes
 			numnodes = READINT32(data);
 			nodes		= Z_Calloc(numnodes * sizeof (*nodes), PU_LEVEL, NULL);
+			if (nodetype == NT_XGL3)
+			{
+				UINT32 x, y, dx, dy;
+				UINT32 c0, c1;
+				node_t *mn;
+				for (i = 0, mn = nodes; i < numnodes; i++, mn++)
+				{
+					// Splitter.
+					x = READINT32(data);
+					y = READINT32(data);
+					dx = READINT32(data);
+					dy = READINT32(data);
+					mn->x = x;
+					mn->y = y;
+					mn->dx = dx;
+					mn->dy = dy;
+
+					// Bounding boxes and children.
+					for (j = 0; j < 2; j++)
+						for (k = 0; k < 4; k++)
+							mn->bbox[j][k] = READINT16(data)<<FRACBITS;
+					c0 = READUINT32(data);
+					c1 = READUINT32(data);
+					mn->children[0] = ShrinkNodeID(c0); /// \todo Use UINT32 for node children in a future, instead?
+					mn->children[1] = ShrinkNodeID(c1);
+				}
+			}
+			else
 			{
 				UINT32 c0, c1;
 				node_t *mn;

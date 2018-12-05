@@ -47,6 +47,9 @@ fixed_t rw_distance;
 static INT32 rw_x, rw_stopx;
 static angle_t rw_centerangle;
 static fixed_t rw_offset;
+static fixed_t rw_offset_top, rw_offset_mid, rw_offset_bot; // Independent offsets.
+
+
 static fixed_t rw_offset2; // for splats
 static fixed_t rw_scale, rw_scalestep;
 static fixed_t rw_midtexturemid, rw_toptexturemid, rw_bottomtexturemid;
@@ -1303,6 +1306,10 @@ static void R_RenderSegLoop (void)
 
 	INT32     mid;
 	fixed_t texturecolumn = 0;
+
+	fixed_t texturecolumn_top = 0;
+	fixed_t texturecolumn_mid = 0;
+	fixed_t texturecolumn_bot = 0;
 #ifdef ESLOPE
 	fixed_t oldtexturecolumn = -1;
 #endif
@@ -1442,7 +1449,9 @@ static void R_RenderSegLoop (void)
 		// calculate texture offset
 		angle = (rw_centerangle + xtoviewangle[rw_x])>>ANGLETOFINESHIFT;
 		texturecolumn = rw_offset-FixedMul(FINETANGENT(angle),rw_distance);
-
+		texturecolumn_top = (FixedMul(rw_offset_top - FixedMul(FINETANGENT(angle),rw_distance), topxscale))>>FRACBITS;
+		texturecolumn_mid = (FixedMul(rw_offset_mid - FixedMul(FINETANGENT(angle),rw_distance), midxscale))>>FRACBITS;
+		texturecolumn_bot = (FixedMul(rw_offset_bot - FixedMul(FINETANGENT(angle),rw_distance), botxscale))>>FRACBITS;
 #ifdef ESLOPE
 		if (oldtexturecolumn != -1) {
 			rw_bottomtexturemid += FixedMul(rw_bottomtextureslide,  oldtexturecolumn-texturecolumn);
@@ -1453,9 +1462,12 @@ static void R_RenderSegLoop (void)
 		oldtexturecolumn = texturecolumn;
 #endif
 
+		texturecolumn >>= FRACBITS;
+
 		// texturecolumn and lighting are independent of wall tiers
 		if (segtextured)
 		{
+
 			// calculate lighting
 			pindex = FixedMul(rw_scale, FixedDiv(640, vid.width))>>LIGHTSCALESHIFT;
 
@@ -1516,8 +1528,9 @@ static void R_RenderSegLoop (void)
 			{
 				dc_yl = yl;
 				dc_yh = yh;
-				dc_texturemid = rw_midtexturemid;
-				dc_source = R_GetColumn(midtexture,FixedMul(texturecolumn, midxscale)>>FRACBITS);
+				dc_texturemid = FixedMul(rw_midtexturemid, midyscale);
+				dc_iscale = FixedMul(0xffffffffu / (unsigned)rw_scale, midyscale);
+				dc_source = R_GetColumn(midtexture, texturecolumn_mid);
 				dc_texheight = textureheight[midtexture]>>FRACBITS;
 
 				//profile stuff ---------------------------------------------------------
@@ -1569,8 +1582,9 @@ static void R_RenderSegLoop (void)
 					{
 						dc_yl = yl;
 						dc_yh = mid;
-						dc_texturemid = rw_toptexturemid;
-						dc_source = R_GetColumn(toptexture,FixedMul(texturecolumn, midxscale)>>FRACBITS);
+						dc_texturemid = FixedMul(rw_toptexturemid, topyscale);
+						dc_iscale = FixedMul(0xffffffffu / (unsigned)rw_scale, topyscale);
+						dc_source = R_GetColumn(toptexture, texturecolumn_top);
 						dc_texheight = textureheight[toptexture]>>FRACBITS;
 						colfunc();
 						ceilingclip[rw_x] = (INT16)mid;
@@ -1602,9 +1616,10 @@ static void R_RenderSegLoop (void)
 					{
 						dc_yl = mid;
 						dc_yh = yh;
-						dc_texturemid = rw_bottomtexturemid;
+						dc_texturemid = FixedMul(rw_bottomtexturemid, botyscale);
+						dc_iscale = FixedMul(0xffffffffu / (unsigned)rw_scale, botyscale);
 						dc_source = R_GetColumn(bottomtexture,
-							FixedMul(texturecolumn, botxscale)>>FRACBITS);
+							texturecolumn_bot);
 						dc_texheight = textureheight[bottomtexture]>>FRACBITS;
 						colfunc();
 						floorclip[rw_x] = (INT16)mid;
@@ -1623,7 +1638,7 @@ static void R_RenderSegLoop (void)
 		{
 			// save texturecol
 			//  for backdrawing of masked mid texture
-			maskedtexturecol[rw_x] = (INT16)texturecolumn>>FRACBITS;
+			maskedtexturecol[rw_x] = (INT16)texturecolumn;
 
 #ifdef ESLOPE
 			if (maskedtextureheight != NULL) {
@@ -2137,7 +2152,8 @@ void R_StoreWallRange(INT32 start, INT32 stop)
 		    || backsector->floorlightsec != frontsector->floorlightsec
 		    //SoM: 4/3/2000: Check for colormaps
 		    || frontsector->extra_colormap != backsector->extra_colormap
-		    || (frontsector->ffloors != backsector->ffloors && frontsector->tag != backsector->tag))
+		    || (frontsector->ffloors != backsector->ffloors && frontsector->tag != backsector->tag)
+		    || frontsector->floor_scale != backsector->floor_scale)
 		{
 			markfloor = true;
 		}
@@ -2163,7 +2179,9 @@ void R_StoreWallRange(INT32 start, INT32 stop)
 		    || backsector->ceilinglightsec != frontsector->ceilinglightsec
 		    //SoM: 4/3/2000: Check for colormaps
 		    || frontsector->extra_colormap != backsector->extra_colormap
-		    || (frontsector->ffloors != backsector->ffloors && frontsector->tag != backsector->tag))
+		    || (frontsector->ffloors != backsector->ffloors && frontsector->tag != backsector->tag)
+		    || frontsector->ceiling_scale != backsector->ceiling_scale
+			)
 		{
 				markceiling = true;
 		}
@@ -2597,13 +2615,27 @@ void R_StoreWallRange(INT32 start, INT32 stop)
 
 		/// don't use texture offset for splats
 		rw_offset2 = rw_offset + curline->offset;
-		rw_offset += sidedef->textureoffset + curline->offset;
-		rw_centerangle = ANGLE_90 + viewangle - rw_normalangle;
 
 		// Per-texture scaling.
 		topxscale = sidedef->scalex_top;
 		midxscale = sidedef->scalex_mid;
 		botxscale = sidedef->scalex_bot;
+		topyscale = sidedef->scaley_top;
+		midyscale = sidedef->scaley_mid;
+		botyscale = sidedef->scaley_bot;
+
+		// Per-texture scaling.
+		rw_offset_top = rw_offset + FixedDiv(sidedef->textureoffset , topxscale) + curline->offset;
+		rw_offset_mid = rw_offset + FixedDiv(sidedef->textureoffset , midxscale) + curline->offset;
+		rw_offset_bot = rw_offset + FixedDiv(sidedef->textureoffset , botxscale) + curline->offset;
+
+		rw_offset += sidedef->textureoffset + curline->offset;
+
+
+
+		rw_centerangle = ANGLE_90 + viewangle - rw_normalangle;
+
+
 
 		// calculate light table
 		//  use different light tables
