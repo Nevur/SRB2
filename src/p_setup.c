@@ -740,22 +740,23 @@ static inline void InitSector(sector_t *ss)
 	ss->moved = true;
 
 	ss->extra_colormap = NULL;
-//	ss->spawn_extra_colormap = NULL;
 
-//	ss->spawn_lightlevel = ss->lightlevel;
-	ss->spawn_flr_xoffs = ss->floor_xoffs;
-	ss->spawn_ceil_xoffs = ss->ceiling_xoffs;
-	ss->spawn_flr_yoffs = ss->floor_yoffs;
-	ss->spawn_ceil_yoffs = ss->ceiling_yoffs;
-	ss->spawn_flrpic_angle = ss->floorpic_angle;
-	ss->spawn_ceilpic_angle = ss->ceilingpic_angle;
-//	ss->gravityptr = NULL;
+	ss->floor_xoffs = ss->ceiling_xoffs = ss->floor_yoffs = ss->ceiling_yoffs = 0;
+	ss->spawn_flr_xoffs = ss->spawn_ceil_xoffs = ss->spawn_flr_yoffs = ss->spawn_ceil_yoffs = 0;
+	ss->floorpic_angle = ss->ceilingpic_angle = 0;
+	ss->spawn_flrpic_angle = ss->spawn_ceilpic_angle = 0;
+	ss->bottommap = ss->midmap = ss->topmap = -1;
+	ss->gravity = NULL;
 	ss->cullheight = NULL;
+	ss->verticalflip = false;
 	ss->flags = 0;
 	ss->flags |= SF_FLIPSPECIAL_FLOOR;
 
 	ss->floorspeed = 0;
 	ss->ceilspeed = 0;
+
+	ss->floor_scale = FRACUNIT;
+	ss->ceiling_scale = FRACUNIT;
 
 #ifdef HWRENDER // ----- for special tricks with HW renderer -----
 	ss->pseudoSector = false;
@@ -789,65 +790,8 @@ static void P_LoadSectors(UINT8 *data)
 		ss->lightlevel = SHORT(ms->lightlevel);
 		ss->special = SHORT(ms->special);
 		ss->tag = SHORT(ms->tag);
-		ss->nexttag = ss->firsttag = -1;
-		ss->spawn_nexttag = ss->spawn_firsttag = -1;
 
-		memset(&ss->soundorg, 0, sizeof(ss->soundorg));
-		ss->validcount = 0;
-
-		ss->thinglist = NULL;
-		ss->touching_thinglist = NULL;
-		ss->preciplist = NULL;
-		ss->touching_preciplist = NULL;
-
-		ss->floordata = NULL;
-		ss->ceilingdata = NULL;
-		ss->lightingdata = NULL;
-
-		ss->linecount = 0;
-		ss->lines = NULL;
-
-		ss->heightsec = -1;
-		ss->camsec = -1;
-		ss->floorlightsec = -1;
-		ss->ceilinglightsec = -1;
-		ss->crumblestate = 0;
-		ss->ffloors = NULL;
-		ss->lightlist = NULL;
-		ss->numlights = 0;
-		ss->attached = NULL;
-		ss->attachedsolid = NULL;
-		ss->numattached = 0;
-		ss->maxattached = 1;
-		ss->moved = true;
-
-		ss->extra_colormap = NULL;
-
-		ss->floor_xoffs = ss->ceiling_xoffs = ss->floor_yoffs = ss->ceiling_yoffs = 0;
-		ss->spawn_flr_xoffs = ss->spawn_ceil_xoffs = ss->spawn_flr_yoffs = ss->spawn_ceil_yoffs = 0;
-		ss->floorpic_angle = ss->ceilingpic_angle = 0;
-		ss->spawn_flrpic_angle = ss->spawn_ceilpic_angle = 0;
-		ss->bottommap = ss->midmap = ss->topmap = -1;
-		ss->gravity = NULL;
-		ss->cullheight = NULL;
-		ss->verticalflip = false;
-		ss->flags = 0;
-		ss->flags |= SF_FLIPSPECIAL_FLOOR;
-
-		ss->floorspeed = 0;
-		ss->ceilspeed = 0;
-
-		ss->floor_scale = FRACUNIT;
-		ss->ceiling_scale = FRACUNIT;
-
-#ifdef HWRENDER // ----- for special tricks with HW renderer -----
-		ss->pseudoSector = false;
-		ss->virtualFloor = false;
-		ss->virtualCeiling = false;
-		ss->sectorLines = NULL;
-		ss->stackList = NULL;
-		ss->lineoutLength = -1.0l;
-#endif // ----- end special tricks -----
+		InitSector(ss);
 	}
 }
 
@@ -3295,8 +3239,6 @@ boolean P_SetupLevel(boolean skipprecip)
 			P_LoadLineDefs	(virtlinedefs->data);
 			P_LoadSideDefs	(virtsidedefs->data);
 			P_LoadMapthings	(virtthings->data);
-
-			P_LoadLineDefsVtx();
 		}
 
 		// set the sky flat num
@@ -3315,6 +3257,8 @@ boolean P_SetupLevel(boolean skipprecip)
 		{
 		case NT_BINARY:
 		{
+			P_LoadLineDefsVtx();
+
 			numsubsectors	= virtssectors->size/ sizeof (mapsubsector_t);
 			numnodes		= virtnodes->size	/ sizeof (mapnode_t);
 			numsegs			= virtsegs->size	/ sizeof (mapseg_t);
