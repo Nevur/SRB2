@@ -67,6 +67,7 @@ INT32 P_CheckLevelFlat(const char *flatname);
 
 extern size_t nummapthings;
 extern mapthing_t *mapthings;
+extern boolean UDMF;
 
 void P_SetupLevelSky(INT32 skynum, boolean global);
 #ifdef SCANTHINGS
